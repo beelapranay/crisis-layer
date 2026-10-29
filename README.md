@@ -30,3 +30,13 @@ Caveats:
   crisis screen; tier 2 (a small classifier) has to confirm or downgrade.
 - `check_output` alone catches under half of the judge-flagged replies; it works because crisis-rated messages never
   reach the model. The remaining leaks are diet and drinking advice on check-in messages.
+
+## Safety and license
+
+This is a research prototype, not a medical device or a substitute for professional care, and it is not validated
+for use with real people in crisis. Crisis resources in the app must be verified, region-appropriate and maintained by
+people; clinician review is needed before any deployment.
+
+The test prompts in `../neuron-explorer/sweep/supporter_prompts.py` describe suicide, self-harm and abuse on purpose.
+
+MIT licensed; see `LICENSE`.
