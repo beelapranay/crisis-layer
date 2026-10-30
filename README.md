@@ -16,7 +16,8 @@ LFM3-1.7B noticing risk (with the best system prompt it still missed ~13% of hel
   - `train.py` (any Hugging Face encoder via `CRISIS_BASE`), `eval_pipeline.py` (thresholds on real validation,
     then every test set), `eval_cssrs.py` (psychiatrist-labelled C-SSRS users), `tests.py` (test sets)
   - not in git: `data/`, `external/` and `model*/` (rebuild with the scripts; the shipped model is
-    `model_roberta_v2/`, ~500 MB fp32)
+    `model_roberta_v2/`, ~500 MB fp32). The shipped PyTorch and Core ML models are backed up in the private
+    Hugging Face repo `pranaybeela/crisis-classifier` (`pytorch/`, `coreml/`)
 
 Pipeline in the app: a crisis-rated message shows the fixed crisis screen instead of a model reply; a check-in adds a
 gentle safety question to the model's reply; every reply is resource-stripped and passed through `check_output`.
