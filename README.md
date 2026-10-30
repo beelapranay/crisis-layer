@@ -80,6 +80,24 @@ Caveats:
 - C-SSRS rates a user by their worst post, and "Supportive" users discuss suicide while helping others, so its
   supportive-flagged numbers overstate false alarms.
 
+## On the iPhone (Core ML)
+
+`export_coreml.py` (own venv: coremltools 9.0, torch 2.7.0, transformers 5.20.1) writes `coreml/` (not in git):
+
+- `CrisisClassifier.mlpackage`, 250 MB, fp16, iOS 18+: a multifunction model with one function per input length
+  (`len16`, `len32`, `len64`, `len128`, `len256`) sharing one copy of the weights. A single model with flexible
+  (enumerated) lengths segfaulted on the CPU and Neural Engine for 128+ tokens; fixed-length functions do not.
+- `tokenizer.json` and `crisis_config.json` (thresholds, function names, pad token, the combining rule).
+
+Checked against PyTorch on 1,252 test messages through the Neural Engine path: mean probability difference 0.0007,
+largest 0.022; 6 messages changed level, all within 0.003 of a threshold. About 3 ms per message on an M3 Mac's
+Neural Engine (CPU_AND_NE); expect the same order on an iPhone 16 Pro.
+
+In the app: tokenize with swift-transformers from `tokenizer.json`; pad to the smallest length that fits and load
+that function (`MLModelConfiguration.functionName`, compute units `.cpuAndNeuralEngine`); for messages over 256
+tokens, score 256-token windows and take the highest risk; then apply the rules and thresholds from
+`crisis_config.json` exactly as `pipeline.combine` does.
+
 ## Data
 
 - Reddit C-SSRS Suicide Dataset, Gaur et al. 2019, CC BY 4.0 (https://zenodo.org/records/2667859): test only.
