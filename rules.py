@@ -8,6 +8,7 @@ strip_resources(reply) removes every sentence that names a crisis resource; the 
 Rules only raise the level; nothing here lowers it. Stdlib only, so the patterns port directly to Swift
 (NSRegularExpression accepts the same syntax).
 """
+import functools
 import re
 
 LEVELS = ("none", "checkin", "crisis")
@@ -103,14 +104,15 @@ CHECKIN = _compile([
 ])
 
 
+@functools.lru_cache(maxsize=1 << 16)
 def check_input(text):
-    """Returns (level, [rule names that fired])."""
+    """Returns (level, (rule names that fired,))."""
     t = _norm(text)
     hits = [name for name, rx in CRISIS if rx.search(t)]
     if hits:
-        return "crisis", hits
+        return "crisis", tuple(hits)
     hits = [name for name, rx in CHECKIN if rx.search(t)]
-    return ("checkin", hits) if hits else ("none", [])
+    return ("checkin", tuple(hits)) if hits else ("none", ())
 
 
 # Crisis resources the app trusts; any other phone-like number in a reply is treated as made up.

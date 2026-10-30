@@ -10,11 +10,87 @@ LFM3-1.7B noticing risk (with the best system prompt it still missed ~13% of hel
     self-harm, concealment tips, and goodbye letters for at-risk users.
 - `eval_rules.py`: scores the rules on the supporter eval prompts and the ~18.6k judged replies in
   `neuron-explorer/stats/lfm3-1.7b-persona/eval/`. Held-out failures stay hidden unless `--show-heldout`.
+- Tier 2, a fine-tuned RoBERTa-base classifier (none / checkin / crisis), combined with the rules in `pipeline.py`:
+  - data: `gen_data.py` (synthetic messages), `fetch_real.py` (real Reddit text, see Data), `relabel.py` (v2
+    labels from two LLMs; messages kept where both agree), `build_v2.py` (splits, a frozen real test split)
+  - `train.py` (any Hugging Face encoder via `CRISIS_BASE`), `eval_pipeline.py` (thresholds on real validation,
+    then every test set), `eval_cssrs.py` (psychiatrist-labelled C-SSRS users), `tests.py` (test sets)
+  - not in git: `data/`, `external/` and `model*/` (rebuild with the scripts; the shipped model is
+    `model_roberta_v2/`, ~500 MB fp32)
 
 Pipeline in the app: a crisis-rated message shows the fixed crisis screen instead of a model reply; a check-in adds a
 gentle safety question to the model's reply; every reply is resource-stripped and passed through `check_output`.
 
-## Results (2026-10-29)
+## App behaviour per level
+
+The classifier's check-in threshold is set low on purpose, so roughly a third to a half of plainly sad messages
+trigger a check-in. That only works if a check-in costs the user almost nothing:
+
+- **none**: normal chat. No crisis resources anywhere in the reply (they are stripped) or the UI.
+- **check-in**: the model's reply is shown as usual, followed by one small, dismissible line under it, for example
+  "How are you holding up right now? If you're ever not feeling safe, support is one tap away." with two quiet
+  buttons: "I'm okay" and "I'm not safe". No modal, no hotline numbers in the line itself.
+  - At most one check-in every 10 messages or 30 minutes, unless the level rises or the message is a new kind of
+    risk (the rules fired where they had not before).
+  - "I'm okay" lowers sensitivity for the rest of the session only for the same kind of message; it never turns
+    the check-in off.
+  - "I'm not safe" opens the crisis screen.
+- **crisis**: the crisis screen replaces the model's reply: verified resources for the user's region (988 call and
+  text in the US), emergency services, a short grounding exercise, and a way back to the chat. The wording is fixed
+  and reviewed, never generated. The session stays at heightened sensitivity afterwards.
+
+The crisis screen needs either a classifier P(crisis) above a strict threshold or a high-precision rule ("kill
+myself", "suicide", "overdose", "already took", ...). Other rule hits ("this traffic is killing me", "cut myself
+some slack") only ever produce a check-in.
+
+## Tier 2 results (2026-10-29)
+
+Shipped: RoBERTa-base trained on 18,963 messages (~70% real) with v2 labels, thresholds `T_RISK = 0.267` (check-in
+for 10% of safe validation messages) and `T_CRISIS = 0.138` (crisis screen for 2%), rules + classifier as in
+`pipeline.py`.
+
+| | rules only | rules + RoBERTa v1 labels | **rules + RoBERTa v2 labels** |
+|---|---|---|---|
+| risk test prompts flagged (dev + held-out) | 105/105 | 105/105 | **105/105** |
+| everyday test prompts flagged | 1/163 | 61/163 | **36/163** |
+| everyday test prompts sent to the crisis screen | 0 | 10 | **4** |
+| idioms flagged / sent to the crisis screen | 12 / 10 | 13 / 4 | 18 / 3 |
+| C-SSRS at-risk users flagged (392) | 76% | 97% | 95% |
+| C-SSRS behavior/attempt users sent to the crisis screen (122) | 89% | 98% | 97% |
+| frozen real test split (944): risk flagged / crisis screened / false alarms / false crisis | — | — | 96% / 96% / 11% / 1.8% |
+
+Classifier latency on a GPU: ~5–6 ms per message.
+
+What changed the most:
+- **Real text.** Synthetic training data alone (MiniLM) caught 93% of C-SSRS at-risk users but flagged a third of
+  everyday prompts; adding ~14k real Reddit and GoEmotions messages (labelled by two LLMs) lifted that to 97–99%.
+- **Label definitions (v2).** v1 counted "hopelessness" as a check-in sign and told the labeller to pick the higher
+  level when unsure, so it labelled ~19% of plainly sad messages as check-in and the classifier learned "sad =
+  risk". v2 makes sadness, numbness, guilt and other depression symptoms "none" unless they come with a sign of
+  danger; everyday prompts flagged fell from 61 to 36.
+- **Model size helped a little.** At equal false-alarm rates RoBERTa-base (125M) beat MiniLM-L6 (22M) on every
+  measure, most on C-SSRS (AUROC 0.73 → 0.78) and idioms.
+
+Caveats:
+- All training and validation labels come from LLMs, not clinicians, and the frozen test split shares that labelling
+  policy; only C-SSRS has expert labels. The v2 policy rates C-SSRS "Indicator" users (risk factors without talk of
+  death) as safe more often, which a clinician should review.
+- The hand-written test sets (dev, held-out, idioms) have been looked at four times while developing; treat them as
+  development numbers. The frozen real split was scored once for v2 (v1 had trained on those messages).
+- C-SSRS rates a user by their worst post, and "Supportive" users discuss suicide while helping others, so its
+  supportive-flagged numbers overstate false alarms.
+
+## Data
+
+- Reddit C-SSRS Suicide Dataset, Gaur et al. 2019, CC BY 4.0 (https://zenodo.org/records/2667859): test only.
+- Reddit Mental Health Dataset, Low et al. 2020, ODC PDDL (https://zenodo.org/records/3941387): sampled 2019 posts
+  and post openings for training; re-use is subject to Reddit's API terms.
+- GoEmotions, Google, Apache 2.0 (https://huggingface.co/datasets/google-research-datasets/go_emotions): short
+  comments for training.
+- Training on Reddit text is acceptable here because the project is research / non-commercial; revisit Reddit's
+  data terms before any commercial use.
+
+## Tier 1 results (2026-10-29)
 
 | | dev (200) | held-out (80) |
 |---|---|---|

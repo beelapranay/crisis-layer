@@ -1,3 +1,7 @@
 __pycache__/
 .DS_Store
-rules_report.json
+*_report*.json
+*.log
+data/
+external/
+model*/
